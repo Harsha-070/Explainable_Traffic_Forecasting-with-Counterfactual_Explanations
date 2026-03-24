@@ -1,67 +1,122 @@
-# Traffic Speed Predictor with Explainable AI
+# Explainable Traffic Forecasting with Counterfactual Explanations
 
-An AI-powered traffic speed prediction system using LSTM + Transformer hybrid neural networks with explainable AI features including counterfactual explanations, temporal attention visualization, and feature importance analysis.
+An AI-powered traffic speed prediction system using an **LSTM + Transformer hybrid** neural network with explainable AI features including counterfactual what-if scenarios, temporal attention visualization, and feature importance analysis.
+
+![Python](https://img.shields.io/badge/Python-3.8+-blue) ![PyTorch](https://img.shields.io/badge/PyTorch-2.1-red) ![Flask](https://img.shields.io/badge/Flask-3.0-green) ![License](https://img.shields.io/badge/License-MIT-yellow)
 
 ## Dataset
 
 This project uses the **Metro Interstate Traffic Volume** dataset from Kaggle:
 
-**Download link:** https://www.kaggle.com/datasets/anshtanwar/metro-interstate-traffic-volume
+**Download:** https://www.kaggle.com/datasets/anshtanwar/metro-interstate-traffic-volume
 
 The dataset contains **48,204 hourly records** of I-94 Westbound traffic volume from MN DoT ATR station 301 (between Minneapolis and St Paul, MN), collected from 2012-2018.
 
 ### Quick Setup
 
-**Option A — Preprocess before running:**
+**Option A — Upload via the web UI (recommended):**
+Simply upload the raw Kaggle CSV through the frontend — it auto-detects the format and converts it on the fly.
+
+**Option B — Preprocess before running:**
 ```bash
 # 1. Download Metro_Interstate_Traffic_Volume.csv from Kaggle
 # 2. Place it in the project root
-python prepare_kaggle_data.py Metro_Interstate_Traffic_Volume.csv
+python scripts/prepare_kaggle_data.py Metro_Interstate_Traffic_Volume.csv
 # 3. Start the backend as usual
 ```
 
-**Option B — Upload via the web UI:**
-Simply upload the raw Kaggle CSV through the frontend — it auto-detects the format and converts it on the fly.
-
-### How the conversion works
+### How the Conversion Works
 
 The Kaggle dataset has `traffic_volume` but no `speed`. Speed is derived using the **Greenshields traffic flow model**, a standard traffic-engineering formula:
 
 ```
-speed = free_flow_speed × (1 − volume / road_capacity)
+speed = free_flow_speed x (1 - volume / road_capacity)
 ```
 
-For I-94: `free_flow_speed = 70 mph`, `road_capacity = 7200 veh/hr`
+Parameters: `free_flow_speed = 70 mph`, `road_capacity = 7200 veh/hr`
 
 ## Project Structure
 
 ```
 traffic-predictor/
 ├── backend/
-│   ├── app.py              # Flask API server
-│   ├── model.py            # LSTM + Transformer neural network
-│   ├── explainer.py        # Explainability engine
+│   ├── app.py              # Flask API server (async training, Kaggle auto-convert)
+│   ├── model.py            # LSTM + Transformer hybrid neural network
+│   ├── explainer.py        # Explainability engine (XAI)
 │   └── requirements.txt    # Python dependencies
 ├── frontend/
-│   ├── index.html          # Main web interface
-│   ├── style.css           # Styling
-│   └── script.js           # Frontend logic
+│   ├── index.html          # Dark command-center dashboard
+│   ├── style.css           # Dark theme styling (Syne + DM Sans)
+│   └── script.js           # Frontend logic with real-time progress
+├── scripts/
+│   ├── prepare_kaggle_data.py  # Kaggle CSV preprocessor
+│   └── train_fresh.py          # Standalone training script
 ├── data/
-│   ├── traffic_final_clean.csv  # Processed dataset
-│   └── sample_traffic.csv       # Sample dataset
-├── prepare_kaggle_data.py  # Kaggle CSV preprocessor
+│   └── traffic_final_clean.csv # Pre-processed dataset (40K+ records)
 └── README.md
 ```
 
 ## Features
 
-1. **Data Upload** - Upload CSV traffic data or generate sample data
-2. **LSTM Model Training** - Train neural network on historical data
-3. **Real-time Predictions** - Predict traffic speed for the next hour
-4. **Explainable AI**:
-   - Feature importance visualization
-   - Counterfactual "what-if" scenarios
-   - Human-readable explanations
+### Core
+- **CSV Upload** — Upload traffic data or generate realistic sample data
+- **Kaggle Auto-Convert** — Upload raw Kaggle CSV, auto-detected and converted
+- **LSTM + Transformer Training** — Hybrid neural network with real-time epoch progress
+- **Real-time Predictions** — Predict traffic speed for the next hour
+
+### Explainable AI (XAI)
+- **Feature Importance** — Perturbation-based analysis showing % impact of each feature
+- **Temporal Attention** — Transformer attention weights showing which past hours matter most
+- **What-If Scenarios** — 6 counterfactual scenarios (volume changes, speed changes, rush hour, weekend)
+- **Natural Language Explanations** — Human-readable prediction summaries with recommendations
+
+### Training Pipeline
+- **Train/Validation Split** — 85/15 split with proper holdout evaluation
+- **OneCycleLR Scheduler** — Fast convergence with cosine annealing
+- **Early Stopping** — Patience-based stopping to prevent overfitting
+- **Live Progress** — Real-time epoch, loss, and validation loss displayed during training
+- **Accuracy Metrics** — MAE, RMSE, R², accuracy within 3/5 mph reported after training
+
+## Model Architecture
+
+```
+Input (12 hours x 4 features)
+        |
+   LSTM Layer 1 (64 units, dropout 0.15)
+        |
+   LSTM Layer 2 (64 units, dropout 0.15)
+        |
+   Positional Encoding (sinusoidal)
+        |
+   Transformer Encoder (2 layers, 2-head attention)
+        |
+   Dense Layer --> 1 output (predicted speed in mph)
+```
+
+| Component | Details |
+|-----------|---------|
+| LSTM | 2 layers, 64 hidden units, captures sequential patterns |
+| Positional Encoding | Sinusoidal, adds temporal position awareness |
+| Transformer | 2 encoder layers, 2-head self-attention, 256-dim feedforward |
+| Optimizer | AdamW (lr=0.002, weight_decay=1e-4) |
+| Scheduler | OneCycleLR (cosine annealing, 30% warmup) |
+| Loss | HuberLoss (delta=1.0, robust to outliers) |
+| Input | 12 time steps x 4 features |
+| Output | 1 value (next-hour speed in mph) |
+
+## Model Accuracy
+
+Validated on 15% holdout set (~6,000 samples):
+
+| Metric | Value |
+|--------|-------|
+| MAE | 2.01 mph |
+| RMSE | 2.77 mph |
+| R² | 0.9788 |
+| Accuracy (within 3 mph) | 78.2% |
+| Accuracy (within 5 mph) | 93.8% |
+| Training Loss (Huber) | 0.0022 |
+| Early Stopped At | Epoch 78/80 |
 
 ## Input Data Format
 
@@ -71,136 +126,29 @@ traffic-predictor/
 |--------|-------------|------|---------|
 | `timestamp` | Date/time of measurement | datetime | 2024-01-01 08:00 |
 | `speed` | Traffic speed in mph | float | 55.5 |
-| `volume` | Traffic volume (vehicles/hour) | int | 1200 |
+| `volume` | Traffic volume (scaled /100) | float | 15.0 |
 | `hour` | Hour of day (0-23) | int | 8 |
 | `day_of_week` | Day of week (0=Monday, 6=Sunday) | int | 1 |
 
-### Sample CSV Format
+### Kaggle Format (auto-converted)
 
-```csv
-timestamp,speed,volume,hour,day_of_week
-2024-01-01 08:00,55,1200,8,1
-2024-01-01 09:00,45,1500,9,1
-2024-01-01 10:00,60,1100,10,1
-2024-01-01 11:00,58,900,11,1
-```
-
-## How It Works
-
-### 1. Data Processing
-- Data is normalized using MinMaxScaler (0-1 range)
-- Sliding window sequences created (12 hours input -> 1 hour prediction)
-- Train/validation split for model evaluation
-
-### 2. LSTM Model Architecture
-```
-Input Layer:  12 time steps x 4 features
-LSTM Layer 1: 50 hidden units, dropout=0.2
-LSTM Layer 2: 50 hidden units, dropout=0.2
-Dense Layer:  1 output (predicted speed)
-```
-
-### 3. Prediction Process
-1. Take last 12 hours of traffic data
-2. Normalize input features
-3. Pass through trained LSTM network
-4. Inverse transform to get actual speed value
-
-### 4. Explanation Generation
-- **Feature Importance**: Measures impact of each feature using perturbation
-- **Counterfactual**: Shows "what-if" scenarios with different inputs
-- **Natural Language**: Generates human-readable explanation text
+If you upload a CSV with `date_time` and `traffic_volume` columns, it is automatically converted using the Greenshields model.
 
 ## API Endpoints
 
-### GET `/`
-Returns API information and available endpoints.
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | API info and available endpoints |
+| `/status` | GET | Check data upload and model training status |
+| `/upload` | POST | Upload CSV traffic data (supports Kaggle format) |
+| `/train` | POST | Start model training (async, returns immediately) |
+| `/train/status` | GET | Poll training progress (epoch, loss, val_loss) |
+| `/predict` | POST | Get prediction with full XAI explanations |
+| `/data-stats` | GET | Get statistics about the loaded dataset |
+| `/generate-sample` | POST | Generate realistic synthetic traffic data |
 
-### GET `/status`
-Check system status (data uploaded, model trained).
+### Predict Response Example
 
-**Response:**
-```json
-{
-  "data_uploaded": true,
-  "model_trained": true,
-  "model_loaded": true,
-  "data_info": {"rows": 168, "columns": ["timestamp", "speed", "volume", "hour", "day_of_week"]}
-}
-```
-
-### POST `/upload`
-Upload traffic data CSV file.
-
-**Request:** Form-data with `file` field containing CSV
-
-**Response:**
-```json
-{
-  "status": "success",
-  "message": "Data uploaded successfully",
-  "rows": 168,
-  "columns": ["timestamp", "speed", "volume", "hour", "day_of_week"]
-}
-```
-
-### POST `/generate-sample`
-Generate sample traffic data for testing.
-
-**Request:**
-```json
-{"hours": 168}
-```
-
-**Response:**
-```json
-{
-  "status": "success",
-  "message": "Generated 168 hours of sample data",
-  "rows": 168
-}
-```
-
-### POST `/train`
-Train the LSTM model on uploaded data.
-
-**Response:**
-```json
-{
-  "status": "success",
-  "message": "Model trained successfully",
-  "epochs": 50,
-  "final_loss": 0.0478,
-  "training_samples": 156
-}
-```
-
-### POST `/predict`
-Make traffic speed prediction with explanations.
-
-**Request:**
-```json
-{
-  "data": [
-    [55, 1200, 7, 1],
-    [52, 1300, 8, 1],
-    [48, 1400, 8, 1],
-    [45, 1500, 8, 1],
-    [42, 1550, 8, 1],
-    [40, 1600, 9, 1],
-    [38, 1500, 9, 1],
-    [42, 1400, 9, 1],
-    [48, 1200, 10, 1],
-    [52, 1000, 10, 1],
-    [55, 900, 11, 1],
-    [58, 850, 11, 1]
-  ]
-}
-```
-
-Each row: `[speed, volume, hour, day_of_week]`
-
-**Response:**
 ```json
 {
   "prediction": 56.4,
@@ -217,27 +165,17 @@ Each row: `[speed, volume, hour, day_of_week]`
     "counterfactual": {
       "scenarios": [
         {
-          "scenario": "volume_decrease_20%",
-          "description": "If traffic volume decreased by 20%",
+          "description": "If traffic volume dropped significantly (-70%)",
           "original_prediction": 56.4,
-          "new_prediction": 56.0,
-          "change": -0.4
-        },
-        {
-          "scenario": "rush_hour",
-          "description": "If it was morning rush hour (8 AM)",
-          "original_prediction": 56.4,
-          "new_prediction": 55.8,
-          "change": -0.6
+          "new_prediction": 58.2,
+          "change": 1.8
         }
-      ],
-      "most_impactful": "off_peak"
+      ]
     },
-    "input_summary": {
-      "avg_speed": 47.9,
-      "avg_volume": 1283.0,
-      "current_hour": 11,
-      "day_of_week": 1
+    "temporal_attention": {
+      "weights": [0.077, 0.076, ...],
+      "labels": ["t-11", "t-10", ...],
+      "description": "The model attended most to 6 hours ago (weight: 9.9%)..."
     }
   }
 }
@@ -245,14 +183,14 @@ Each row: `[speed, volume, hour, day_of_week]`
 
 ## Installation
 
-### Backend Setup
+### Backend
 
 ```bash
 cd backend
 
 # Create virtual environment (recommended)
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate  # Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
@@ -263,11 +201,8 @@ python app.py
 
 The API will be available at `http://localhost:5000`
 
-### Frontend Setup
+### Frontend
 
-Simply open `frontend/index.html` in your web browser.
-
-Or serve with a static file server:
 ```bash
 cd frontend
 python -m http.server 8080
@@ -275,42 +210,30 @@ python -m http.server 8080
 
 Then open `http://localhost:8080`
 
-## Usage Guide
+## Usage
 
-1. **Upload Data**: Click "Upload Data" to upload your CSV file, or click "Generate Sample Data" for testing
-
-2. **Train Model**: Click "Train Model" to train the LSTM neural network (~50 epochs)
-
-3. **Make Predictions**: Enter current traffic conditions:
-   - Current speed (mph): 0-100
-   - Traffic volume (vehicles/hour): 0-5000
-   - Hour of day (0-23): Current hour
-   - Day of week (0=Mon, 6=Sun): Current day
-
-4. **View Results**:
-   - Predicted speed with traffic condition indicator
+1. **Upload Data** — Drop a Kaggle CSV or click "Generate Sample" for testing
+2. **Train Model** — Click "Train Model" and watch real-time epoch progress (loss, val_loss)
+3. **Predict** — Enter speed, volume, hour, day and click "Predict Traffic Speed"
+4. **Analyze Results**:
+   - Predicted speed with condition badge (Free Flowing / Moderate / Congested)
+   - Input summary cards (avg speed, volume, hour, day)
    - Feature importance bar chart
-   - Human-readable explanation
-   - What-if counterfactual scenarios
+   - Temporal attention bar chart
+   - Natural language explanation
+   - 6 what-if scenario cards with impact values
 
-## Model Accuracy
+## Technologies
 
-The LSTM model typically achieves:
-- **Training Loss**: ~0.05 (MSE)
-- **MAE**: ~3-5 mph on validation data
-- **Accuracy**: 85-90% within 5 mph of actual values
-
-Accuracy depends on:
-- Quality and quantity of training data
-- Consistency of traffic patterns
-- Proper feature engineering
-
-## Technologies Used
-
-- **Backend**: Python 3.8+, Flask, PyTorch
-- **Frontend**: HTML5, CSS3, JavaScript, Chart.js
-- **ML**: LSTM Neural Network
-- **Explainability**: Custom perturbation-based feature importance
+| Layer | Technology |
+|-------|-----------|
+| Backend | Python 3.8+, Flask 3.0, Flask-CORS |
+| ML Framework | PyTorch 2.1 |
+| Model | LSTM + Transformer Encoder (hybrid) |
+| Preprocessing | scikit-learn (MinMaxScaler), Pandas, NumPy |
+| Frontend | HTML5, CSS3, vanilla JavaScript |
+| Charts | Chart.js |
+| Fonts | Syne (display), DM Sans (body) |
 
 ## License
 

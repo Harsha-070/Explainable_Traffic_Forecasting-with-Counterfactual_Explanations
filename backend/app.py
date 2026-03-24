@@ -130,6 +130,19 @@ def upload_data():
         return jsonify({"error": str(e)}), 500
 
 
+def _on_progress(info):
+    """Callback from model.train_model — receives a dict per epoch."""
+    training_state.update({
+        "progress": info['percent'],
+        "epoch": info['epoch'],
+        "total_epochs": info['total_epochs'],
+        "train_loss": info['train_loss'],
+        "val_loss": info['val_loss'],
+        "best_val_loss": info['best_val_loss'],
+        "patience": info['patience'],
+    })
+
+
 def _train_worker():
     """Background worker that trains the model."""
     global trained_model, training_state
@@ -137,15 +150,7 @@ def _train_worker():
         df = pd.read_csv(WORKING_DATA)
         model = TrafficLSTM()
 
-        # Hook into training to report progress
-        original_train = model.train_model
-
-        def tracked_train(df, **kwargs):
-            kwargs['verbose'] = True
-            # We'll track via epoch callback
-            return original_train(df, **kwargs)
-
-        history = model.train_model(df, progress_callback=lambda p: training_state.update({"progress": p}))
+        history = model.train_model(df, progress_callback=_on_progress)
 
         model.save('saved_models/traffic_model.pth')
         trained_model = model
@@ -183,7 +188,9 @@ def train_model():
     if not os.path.exists(WORKING_DATA):
         return jsonify({"error": "No data uploaded. Please upload data first."}), 400
 
-    training_state = {"running": True, "progress": 0, "result": None, "error": None}
+    training_state = {"running": True, "progress": 0, "epoch": 0, "total_epochs": 80,
+                      "train_loss": None, "val_loss": None, "best_val_loss": None,
+                      "patience": 0, "result": None, "error": None}
     thread = threading.Thread(target=_train_worker, daemon=True)
     thread.start()
 
@@ -192,14 +199,20 @@ def train_model():
 
 @app.route('/train/status', methods=['GET'])
 def train_status():
-    """Poll training progress"""
+    """Poll training progress with epoch-level detail"""
     if training_state["error"]:
         return jsonify({"status": "error", "error": training_state["error"]}), 500
     if training_state["result"]:
         return jsonify(training_state["result"])
     return jsonify({
         "status": "training",
-        "progress": training_state["progress"]
+        "progress": training_state["progress"],
+        "epoch": training_state.get("epoch", 0),
+        "total_epochs": training_state.get("total_epochs", 80),
+        "train_loss": training_state.get("train_loss"),
+        "val_loss": training_state.get("val_loss"),
+        "best_val_loss": training_state.get("best_val_loss"),
+        "patience": training_state.get("patience", 0),
     })
 
 

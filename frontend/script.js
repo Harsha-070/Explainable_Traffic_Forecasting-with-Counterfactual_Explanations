@@ -204,7 +204,7 @@ async function trainModel() {
             return;
         }
 
-        // Poll /train/status for real progress
+        // Poll /train/status for real epoch-level progress
         const result = await new Promise((resolve, reject) => {
             const poll = setInterval(async () => {
                 try {
@@ -212,12 +212,22 @@ async function trainModel() {
                     const data = await resp.json();
 
                     if (data.status === 'training') {
-                        progressFill.style.width = `${data.progress}%`;
-                        progressText.textContent = `${data.progress}%`;
+                        const pct = Math.max(data.progress, 1);
+                        progressFill.style.width = `${pct}%`;
+
+                        // Build a rich status line
+                        let label = `Epoch ${data.epoch}/${data.total_epochs}`;
+                        if (data.train_loss !== null) {
+                            label += `  \u2022  loss: ${data.train_loss.toFixed(4)}`;
+                        }
+                        if (data.val_loss !== null) {
+                            label += `  \u2022  val: ${data.val_loss.toFixed(4)}`;
+                        }
+                        progressText.textContent = label;
                     } else if (data.status === 'success') {
                         clearInterval(poll);
                         progressFill.style.width = '100%';
-                        progressText.textContent = '100%';
+                        progressText.textContent = 'Complete!';
                         resolve(data);
                     } else if (data.status === 'error') {
                         clearInterval(poll);
@@ -226,7 +236,7 @@ async function trainModel() {
                 } catch (e) {
                     // Server busy, keep polling
                 }
-            }, 1000);
+            }, 800);
         });
 
         let msg = `Model trained — Loss: ${result.final_loss.toFixed(4)} | ${result.training_samples} samples`;

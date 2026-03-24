@@ -6,6 +6,7 @@ import torch.nn as nn
 import numpy as np
 import pandas as pd
 import math
+import time
 from sklearn.preprocessing import MinMaxScaler
 import pickle
 import os
@@ -267,9 +268,19 @@ class TrafficLSTM(nn.Module):
             else:
                 patience_counter += 1
 
-            # Report progress
+            # Report progress with rich details + release GIL for Flask
             if progress_callback:
-                progress_callback(int((epoch + 1) / epochs * 95))
+                progress_callback({
+                    'epoch': epoch + 1,
+                    'total_epochs': epochs,
+                    'train_loss': round(avg_loss, 6),
+                    'val_loss': round(avg_val_loss, 6),
+                    'lr': optimizer.param_groups[0]['lr'],
+                    'best_val_loss': round(best_val_loss, 6),
+                    'patience': patience_counter,
+                    'percent': int((epoch + 1) / epochs * 95)
+                })
+            time.sleep(0.01)  # Release GIL so Flask can respond to polls
 
             if verbose and (epoch + 1) % 10 == 0:
                 lr_now = optimizer.param_groups[0]['lr']
